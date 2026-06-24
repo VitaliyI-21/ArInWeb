@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>WebAR — Доповнена візитівка</title>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image-three.prod.js"></script>
+
+<!-- Карта імпорту потрібна лише для GLTFLoader та CSS3DObject (модулі, відсутні у MindAR UMD-збірці) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.150.0/build/three.module.js",
+    "GLTFLoader": "https://unpkg.com/three@0.150.0/examples/jsm/loaders/GLTFLoader.js",
+    "CSS3DRenderer": "https://unpkg.com/three@0.150.0/examples/jsm/renderers/CSS3DRenderer.js"
+  }
+}
+</script>
+
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #050507; font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; z-index: 20;
+    color: #e2e8f0; padding: 14px 16px; box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0));
+    pointer-events: none; font-size: 13px; line-height: 1.5;
+  }
+  #overlay a { color: #a5b4fc; text-decoration: none; pointer-events: all; }
+  #startBtn {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: #050507;
+  }
+  #startBtn button {
+    padding: 16px 30px; font-size: 17px; font-weight: 600;
+    background: #6366f1; color: #fff; border: none; border-radius: 10px;
+    cursor: pointer;
+  }
+  #startBtn button:hover { background: #4f46e5; }
+  #hint {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    z-index: 20; color: #cbd5e1; font-size: 12px; text-align: center;
+    background: rgba(0,0,0,0.45); padding: 8px 16px; border-radius: 8px;
+    max-width: 92%;
+  }
+
+  #ar-container { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #ar-container video,
+  #ar-container canvas {
+    position: absolute !important;
+    top: 50% !important; left: 50% !important;
+    width: 100% !important; height: 100% !important;
+    object-fit: cover !important;
+    transform: translate(-50%, -50%) !important;
+  }
+
+  /* CSS3D-панель для текстової інформації (email/сайт/профіль/локація) */
+  #info-div {
+    width: 1000px;
+    visibility: hidden;
+    background: rgba(15, 23, 42, 0.92);
+    border: 4px solid #6366f1;
+    border-radius: 24px;
+    padding: 40px;
+    color: #f1f5f9;
+    font-size: 46px;
+    text-align: center;
+    box-sizing: border-box;
+  }
+</style>
+</head>
+<body>
+
+  <div id="ar-container"></div>
+
+  <div id="info-div"></div>
+
+  <div id="startBtn">
+    <button id="startButtonInner">📷🔊 Дозволити камеру й звук та запустити AR</button>
+  </div>
+
+  <div id="overlay">
+    Наведіть камеру на свою візитівку (<b>card.png</b>) ·
+    <a href="index.html">← на головну</a>
+  </div>
+  <div id="hint">
+    Торкніться іконок — інфо · стрілок — портфоліо · зображення — відео/посилання · 🔊 — звук
+  </div>
+
+  <script type="module">
+    import { GLTFLoader } from "GLTFLoader";
+    import { CSS3DObject } from "CSS3DRenderer";
+
+    const THREE = window.MINDAR.IMAGE.THREE;
+
+    const loader = new THREE.TextureLoader();
+    const loadTexture = (path) =>
+      new Promise((resolve, reject) => loader.load(path, resolve, undefined, reject));
+
+    const loadGLTF = (path) => {
+      const gltfLoader = new GLTFLoader();
+      return new Promise((resolve, reject) => gltfLoader.load(path, resolve, undefined, reject));
+    };
+
+    const loadAudioBuffer = (path) => {
+      const audioLoader = new THREE.AudioLoader();
+      return new Promise((resolve, reject) => audioLoader.load(path, resolve, undefined, reject));
+    };
+
+    const init = async () => {
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.querySelector("#ar-container"),
+        imageTargetSrc: "./card.mind", // скомпільований файл маркера (саме зображення візитівки)
+        uiLoading: "no",
+        uiScanning: "no",
+        uiError: "no",
+      });
+      const { renderer, cssRenderer, scene, cssScene, camera } = mindarThree;
+      renderer.setClearColor(0x000000, 0);
+
+      const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+      scene.add(light);
+
+      const listener = new THREE.AudioListener();
+      camera.add(listener);
+
+      const anchor = mindarThree.addAnchor(0);
+
+      // ---------------------------------------------------------------
+      // 1) Сама візитівка (текстура — те саме зображення, що і маркер)
+      // ---------------------------------------------------------------
+      const cardTexture = await loadTexture("./card.png");
+      const cardGeometry = new THREE.PlaneGeometry(1, 0.6);
+      const cardMaterial = new THREE.MeshBasicMaterial({ map: cardTexture });
+      const card = new THREE.Mesh(cardGeometry, cardMaterial);
+      anchor.group.add(card);
+
+      // ---------------------------------------------------------------
+      // 2) Анімована 3D-модель — "аватар"-маскот, що ширяє над візитівкою
+      // ---------------------------------------------------------------
+      const avatarGltf = await loadGLTF(
+        "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Flamingo.glb"
+      );
+      avatarGltf.scene.scale.set(0.003, 0.003, 0.003);
+      avatarGltf.scene.position.set(0.32, 0.34, 0.05);
+      avatarGltf.scene.rotation.y = Math.PI / 3;
+      anchor.group.add(avatarGltf.scene);
+
+      const avatarMixer = new THREE.AnimationMixer(avatarGltf.scene);
+      if (avatarGltf.animations.length > 0) {
+        avatarMixer.clipAction(avatarGltf.animations[0]).play();
+      }
+
+      // ---------------------------------------------------------------
+      // 3) Іконки контактів (коло + текстура)
+      // ---------------------------------------------------------------
+      const iconGeometry = new THREE.CircleGeometry(0.045, 32);
+
+      const makeIcon = async (path, x, y) => {
+        const tex = await loadTexture(path);
+        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+        const mesh = new THREE.Mesh(iconGeometry, mat);
+        mesh.position.set(x, y, 0.001);
+        anchor.group.add(mesh);
+        return mesh;
+      };
+
+      const profileIcon = await makeIcon("./icon_profile.png", -0.36, -0.245);
+      const webIcon = await makeIcon("./icon_web.png", -0.18, -0.245);
+      const emailIcon = await makeIcon("./icon_email.png", 0.0, -0.245);
+      const locationIcon = await makeIcon("./icon_location.png", 0.18, -0.245);
+
+      // Іконка звуку (має два стани — увімкнено/вимкнено, текстура замінюється)
+      const audioOnTexture = await loadTexture("./icon_audio_on.png");
+      const audioOffTexture = await loadTexture("./icon_audio_off.png");
+      const audioIconMat = new THREE.MeshBasicMaterial({ map: audioOffTexture, transparent: true });
+      const audioIcon = new THREE.Mesh(iconGeometry, audioIconMat);
+      audioIcon.position.set(0.36, -0.245, 0.001);
+      anchor.group.add(audioIcon);
+
+      [profileIcon, webIcon, emailIcon, locationIcon, audioIcon].forEach((icon) => {
+        icon.userData.clickable = true;
+      });
+
+      // ---------------------------------------------------------------
+      // 4) Фонове аудіо (просторовий звук, керується іконкою-динаміком)
+      // ---------------------------------------------------------------
+      const audioBuffer = await loadAudioBuffer(
+        "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/sounds/358232_j_s_song.mp3"
+      );
+      const bgAudio = new THREE.PositionalAudio(listener);
+      bgAudio.setBuffer(audioBuffer);
+      bgAudio.setRefDistance(0.5);
+      bgAudio.setLoop(true);
+      bgAudio.setVolume(0.8);
+      anchor.group.add(bgAudio);
+      let audioPlaying = false;
+
+      // ---------------------------------------------------------------
+      // 5) Портфоліо: зображення + відео, що його заміняє, і дві стрілки
+      // ---------------------------------------------------------------
+      const portfolioGeometry = new THREE.PlaneGeometry(0.46, 0.26);
+
+      const portfolio1Texture = await loadTexture("./portfolio1.png");
+      const portfolio2Texture = await loadTexture("./portfolio2.png");
+
+      const video = document.createElement("video");
+      video.crossOrigin = "anonymous";
+      video.loop = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.src = "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/sintel.mp4";
+      const videoTexture = new THREE.VideoTexture(video);
+
+      const portfolioItem0 = new THREE.Mesh(
+        portfolioGeometry,
+        new THREE.MeshBasicMaterial({ map: portfolio1Texture })
+      );
+      const portfolioItem0V = new THREE.Mesh(
+        portfolioGeometry,
+        new THREE.MeshBasicMaterial({ map: videoTexture })
+      );
+      const portfolioItem1 = new THREE.Mesh(
+        portfolioGeometry,
+        new THREE.MeshBasicMaterial({ map: portfolio2Texture })
+      );
+      // Третій елемент — просто кольорова плитка-посилання (зовнішній сайт)
+      const portfolioItem2 = new THREE.Mesh(
+        portfolioGeometry,
+        new THREE.MeshBasicMaterial({ color: 0x1d4ed8 })
+      );
+
+      [portfolioItem0, portfolioItem0V, portfolioItem1, portfolioItem2].forEach((m) => {
+        m.userData.clickable = true;
+      });
+
+      const portfolioGroup = new THREE.Group();
+      portfolioGroup.position.set(0, 0.02, 0.001);
+      portfolioGroup.add(portfolioItem0);
+      anchor.group.add(portfolioGroup);
+
+      const leftIcon = await makeIcon("./icon_left.png", -0.34, 0.02);
+      const rightIcon = await makeIcon("./icon_right.png", 0.34, 0.02);
+      leftIcon.userData.clickable = true;
+      rightIcon.userData.clickable = true;
+
+      const portfolioItems = [portfolioItem0, portfolioItem1, portfolioItem2];
+      let currentPortfolio = 0;
+      let displayedMesh = portfolioItem0; // те, що зараз фактично показано в групі
+
+      // ---------------------------------------------------------------
+      // 6) CSS3D-панель з текстовою інформацією
+      // ---------------------------------------------------------------
+      const infoElement = document.querySelector("#info-div");
+      const infoObj = new CSS3DObject(infoElement);
+      infoObj.position.set(0, -700, 0);
+      infoObj.visible = false;
+      const cssAnchor = mindarThree.addCSSAnchor(0);
+      cssAnchor.group.add(infoObj);
+
+      const showInfo = (html) => {
+        infoElement.innerHTML = html;
+        infoObj.visible = true;
+      };
+
+      // ---------------------------------------------------------------
+      // 7) Обробка кліків — різна реакція для кожного елемента
+      // ---------------------------------------------------------------
+      document.body.addEventListener("click", (e) => {
+        const mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+        const mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        const mouse = new THREE.Vector2(mouseX, mouseY);
+
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+
+        if (intersects.length === 0) return;
+
+        let o = intersects[0].object;
+        while (o.parent && !o.userData.clickable) o = o.parent;
+        if (!o.userData.clickable) return;
+
+        // ---- Іконки контактів: показ текстової інформації ----
+        if (o === profileIcon) {
+          showInfo("👤<br/>Литвиненко Віталій<br/><small style='font-size:28px'>Студент групи Ім-25</small>");
+        } else if (o === webIcon) {
+          showInfo("🌐<br/>example-portfolio.dev");
+        } else if (o === emailIcon) {
+          showInfo("✉️<br/>name.surname [at] example.com");
+        } else if (o === locationIcon) {
+          showInfo("📍<br/>Kryvyi Rih, Ukraine");
+        }
+
+        // ---- Іконка звуку: відкриває/призупиняє фонове аудіо ----
+        else if (o === audioIcon) {
+          audioPlaying = !audioPlaying;
+          if (listener.context.state === "suspended") listener.context.resume();
+          if (audioPlaying) {
+            bgAudio.play();
+            audioIcon.material.map = audioOnTexture;
+          } else {
+            if (bgAudio.isPlaying) bgAudio.pause();
+            audioIcon.material.map = audioOffTexture;
+          }
+        }
+
+        // ---- Стрілки: перемикання елементів портфоліо ----
+        else if (o === leftIcon || o === rightIcon) {
+          video.pause();
+          portfolioGroup.remove(displayedMesh);
+
+          if (o === leftIcon) {
+            currentPortfolio = (currentPortfolio - 1 + portfolioItems.length) % portfolioItems.length;
+          } else {
+            currentPortfolio = (currentPortfolio + 1) % portfolioItems.length;
+          }
+
+          // Слот №0 завжди повертається до статичного зображення (не відео)
+          displayedMesh = currentPortfolio === 0 ? portfolioItem0 : portfolioItems[currentPortfolio];
+          portfolioGroup.add(displayedMesh);
+        }
+
+        // ---- Центральне зображення №1: заміна на відео (запуск) ----
+        else if (o === portfolioItem0 && o === displayedMesh) {
+          portfolioGroup.remove(portfolioItem0);
+          portfolioGroup.add(portfolioItem0V);
+          displayedMesh = portfolioItem0V;
+          video.play().catch(() => {});
+        }
+        // Повторний клік на відео — пауза/відновлення
+        else if (o === portfolioItem0V && o === displayedMesh) {
+          if (video.paused) video.play().catch(() => {});
+          else video.pause();
+        }
+
+        // ---- Другий елемент портфоліо: теж можна "відкрити" як відео-прев'ю ----
+        else if (o === portfolioItem1) {
+          showInfo("🖼️<br/>Проєкт №2 — Сайт-портфоліо<br/><small style='font-size:26px'>(приклад картки портфоліо)</small>");
+        }
+
+        // ---- Третій елемент: відкриває зовнішню веб-сторінку ----
+        else if (o === portfolioItem2) {
+          window.open("https://threejs.org", "_blank");
+        }
+      });
+
+      // ---------------------------------------------------------------
+      anchor.onTargetFound = () => console.log("Візитівку знайдено");
+      anchor.onTargetLost = () => {
+        console.log("Візитівку втрачено — призупиняємо відео/аудіо");
+        video.pause();
+        if (bgAudio.isPlaying) bgAudio.pause();
+      };
+
+      await mindarThree.start();
+
+      const clock = new THREE.Clock();
+      renderer.setAnimationLoop(() => {
+        const delta = clock.getDelta();
+        avatarMixer.update(delta);
+
+        // Легке "ширяння" аватара над карткою
+        avatarGltf.scene.position.y = 0.34 + Math.sin(clock.elapsedTime * 2) * 0.02;
+
+        // Пульсація іконок для привернення уваги (динамічність інтерфейсу)
+        const pulse = 1 + 0.08 * Math.sin(clock.elapsedTime * 4);
+        [profileIcon, webIcon, emailIcon, locationIcon, audioIcon].forEach((icon) => {
+          icon.scale.set(pulse, pulse, pulse);
+        });
+
+        renderer.render(scene, camera);
+        cssRenderer.render(cssScene, camera);
+      });
+    };
+
+    document.getElementById("startButtonInner").addEventListener("click", () => {
+      document.getElementById("startBtn").remove();
+      try {
+        const ctx = THREE.AudioContext.getContext();
+        if (ctx.state === "suspended") ctx.resume();
+      } catch (e) {
+        console.warn("Не вдалося розблокувати AudioContext:", e);
+      }
+      init();
+    });
+  </script>
+</body>
+</html>
