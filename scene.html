@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Three.js — Video Texture Scene</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #050507; }
+  #info {
+    position: absolute; top: 16px; left: 16px;
+    color: #e2e8f0; font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 14px; z-index: 10; line-height: 1.5;
+    background: rgba(0,0,0,0.35); padding: 10px 14px; border-radius: 8px;
+  }
+  #info a { color: #a5b4fc; text-decoration: none; }
+  #unmute {
+    position: absolute; bottom: 20px; left: 16px; z-index: 10;
+    padding: 10px 18px; border: none; border-radius: 8px;
+    background: #6366f1; color: #fff; font-size: 14px; cursor: pointer;
+  }
+  #unmute:hover { background: #4f46e5; }
+</style>
+</head>
+<body>
+  <div id="info">
+    Перетягуйте мишею — обертання камери · Колесо — масштаб<br/>
+    <a href="index.html">← Назад на головну</a>
+  </div>
+  <button id="unmute">🔊 Увімкнути звук</button>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ---- Сцена, камера, рендерер ----
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x050507);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(0, 1.4, 4.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // ---- Освітлення ----
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(3, 5, 4);
+    scene.add(dirLight);
+
+    // ---- Відео-текстура ----
+    // ЗАМІНІТЬ "video.mp4" на власний файл відео у репозиторії.
+    // Поки використовується вільне демо-відео (Big Buck Bunny) для перевірки роботи сцени.
+    const video = document.createElement('video');
+    video.src = 'video.mp4';
+    video.crossOrigin = 'anonymous';
+    video.loop = true;
+    video.muted = true;       // автозапуск у браузерах вимагає muted
+    video.playsInline = true;
+
+    // Фолбек на публічне демо-відео, якщо власний файл відсутній
+    video.addEventListener('error', () => {
+      video.src = 'https://www.w3schools.com/html/mov_bbb.mp4';
+      video.play();
+    });
+
+    video.play().catch(() => {});
+
+    const videoTexture = new THREE.VideoTexture(video);
+    videoTexture.colorSpace = THREE.SRGBColorSpace;
+
+    // ---- Об'єкт зі сценою, на яку накладено відео ----
+    // Обертовий куб, кожна грань якого показує відео
+    const geometry = new THREE.BoxGeometry(2, 2, 2);
+    const material = new THREE.MeshStandardMaterial({
+      map: videoTexture,
+      roughness: 0.4,
+      metalness: 0.1,
+    });
+    const cube = new THREE.Mesh(geometry, material);
+    scene.add(cube);
+
+    // Площина-підлога для контексту сцени
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(20, 20),
+      new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 1 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -1.5;
+    scene.add(floor);
+
+    // ---- Кнопка звуку ----
+    document.getElementById('unmute').addEventListener('click', () => {
+      video.muted = !video.muted;
+      document.getElementById('unmute').textContent = video.muted ? '🔊 Увімкнути звук' : '🔇 Вимкнути звук';
+    });
+
+    // ---- Анімація ----
+    function animate() {
+      requestAnimationFrame(animate);
+      cube.rotation.y += 0.004;
+      cube.rotation.x += 0.001;
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // ---- Адаптивність ----
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
