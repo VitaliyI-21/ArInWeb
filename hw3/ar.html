@@ -46,7 +46,7 @@
     Наведіть камеру на маркер <b>marker.png</b> · <a href="index.html">← на головну</a>
   </div>
   <div id="hint">
-    🟥 Куб (власне фото) — рух · 🌐 Сфера (текстура з GitHub) — обертання · 🔺 Конус (текстура з Wikimedia) — масштабування
+    🟥 Куб (власне фото) — рух · 🌐 Сфера (текстура з GitHub) — обертання · 🔺 Конус (текстура з Picsum) — масштабування
   </div>
 
   <script>
@@ -72,9 +72,9 @@
         "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/uv_grid_opengl.jpg"
       );
 
-      // в) Зображення з довільного іншого ресурсу (Wikimedia Commons — дозволяє CORS)
+      // в) Зображення з довільного іншого ресурсу (Picsum Photos — стабільний CORS-дозволений хостинг)
       const externalTexture = loader.load(
-        "https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/The_Earth_seen_from_Apollo_17.jpg/480px-The_Earth_seen_from_Apollo_17.jpg"
+        "https://picsum.photos/seed/webar-student/600/600"
       );
 
       // ---- Три довільні геометрії з MeshBasicMaterial ----
