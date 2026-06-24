@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>WebAR — MindAR + Three.js</title>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"></script>
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #050507; font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; z-index: 20;
+    color: #e2e8f0; padding: 14px 16px; box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0));
+    pointer-events: none;
+  }
+  #overlay a { color: #a5b4fc; text-decoration: none; pointer-events: all; }
+  #startBtn {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: #050507;
+  }
+  #startBtn button {
+    padding: 16px 30px; font-size: 17px; font-weight: 600;
+    background: #6366f1; color: #fff; border: none; border-radius: 10px;
+    cursor: pointer;
+  }
+  #startBtn button:hover { background: #4f46e5; }
+  #hint {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    z-index: 20; color: #cbd5e1; font-size: 13px; text-align: center;
+    background: rgba(0,0,0,0.45); padding: 8px 16px; border-radius: 8px;
+  }
+</style>
+</head>
+<body>
+
+  <div id="startBtn">
+    <button id="startButtonInner">📷 Дозволити доступ до камери та запустити AR</button>
+  </div>
+
+  <div id="overlay">
+    Наведіть камеру на маркер <b>marker.png</b> · <a href="index.html">← на головну</a>
+  </div>
+  <div id="hint">Над маркером з'являться три геометричні фігури</div>
+
+  <script>
+    const THREE = window.MINDAR.IMAGE.THREE;
+
+    const init = async () => {
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.body,
+        imageTargetSrc: "./targets.mind", // скомпільований файл вашого маркеру
+      });
+      const { renderer, scene, camera } = mindarThree;
+
+      // ---- Три довільні геометрії з MeshBasicMaterial ----
+      const anchor = mindarThree.addAnchor(0);
+
+      // 1) Куб у центрі
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.3, 0.3),
+        new THREE.MeshBasicMaterial({ color: 0xef4444 })
+      );
+      box.position.set(0, 0.25, 0);
+
+      // 2) Сфера зліва
+      const sphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.18, 24, 24),
+        new THREE.MeshBasicMaterial({ color: 0x22c55e, wireframe: false })
+      );
+      sphere.position.set(-0.4, 0.18, 0);
+
+      // 3) Конус справа
+      const cone = new THREE.Mesh(
+        new THREE.ConeGeometry(0.18, 0.4, 32),
+        new THREE.MeshBasicMaterial({ color: 0x6366f1 })
+      );
+      cone.position.set(0.4, 0.2, 0);
+
+      anchor.group.add(box, sphere, cone);
+
+      // Опрацювання подій виявлення/втрати цілі
+      anchor.onTargetFound = () => console.log("Маркер знайдено");
+      anchor.onTargetLost = () => console.log("Маркер втрачено");
+
+      await mindarThree.start();
+
+      const clock = new THREE.Clock();
+      renderer.setAnimationLoop(() => {
+        const delta = clock.getDelta();
+        box.rotation.y += delta * 1.2;
+        box.rotation.x += delta * 0.6;
+        sphere.rotation.y += delta * 0.8;
+        cone.rotation.y -= delta * 1.0;
+        renderer.render(scene, camera);
+      });
+    };
+
+    // Запуск камери лише за дією користувача (вимога Safari/iOS)
+    document.getElementById("startButtonInner").addEventListener("click", () => {
+      document.getElementById("startBtn").remove();
+      init();
+    });
+  </script>
+</body>
+</html>
