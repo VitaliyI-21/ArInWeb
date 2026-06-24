@@ -111,6 +111,7 @@
     background: rgba(15,23,42,0.92); border: 1px solid rgba(255,255,255,0.15);
     border-radius: 12px; padding: 14px; width: 260px; color: #e2e8f0;
     font-size: 13px; display: none; flex-direction: column; gap: 8px;
+    max-height: 70vh; overflow-y: auto;
   }
   #adjustPanel.visible { display: flex; }
   #adjustPanel .adjust-title { font-weight: 600; margin-bottom: 4px; }
@@ -168,11 +169,14 @@
     <label>X <input type="range" id="adjX" min="-1" max="1" step="0.005" /> <span id="adjXVal"></span></label>
     <label>Y <input type="range" id="adjY" min="-1" max="1" step="0.005" /> <span id="adjYVal"></span></label>
     <label>Z <input type="range" id="adjZ" min="-2" max="1" step="0.005" /> <span id="adjZVal"></span></label>
+    <label>Поворот X° <input type="range" id="adjRotX" min="-180" max="180" step="1" /> <span id="adjRotXVal"></span></label>
+    <label>Поворот Y° <input type="range" id="adjRotY" min="-180" max="180" step="1" /> <span id="adjRotYVal"></span></label>
+    <label>Поворот Z° <input type="range" id="adjRotZ" min="-180" max="180" step="1" /> <span id="adjRotZVal"></span></label>
     <div class="row">
       <button id="adjCopyBtn">📋 Скопіювати параметри</button>
       <button id="adjCloseBtn">✕ Сховати</button>
     </div>
-    <textarea id="adjOutput" readonly placeholder="Тут з'явиться готовий код scale/position для вставки в CATEGORIES..."></textarea>
+    <textarea id="adjOutput" readonly placeholder="Тут з'явиться готовий код scale/position/rotation для вставки в CATEGORIES..."></textarea>
   </div>
 
   <script type="module">
@@ -196,9 +200,9 @@
         variants: [
           { id: "none", label: "Немає" },
           { id: "glasses1", thumb: `${THUMBS}/glasses/thumbnail.png`, url: `${ASSETS}/glasses/scene.gltf`,
-            scale: [0.01, 0.01, 0.01], position: [0, 0, 0] },
+            scale: [0.0080, 0.0080, 0.0080], position: [0.0150, -0.0350, -0.1300], rotation: [0, 0, 0] },
           { id: "glasses2", thumb: `${THUMBS}/glasses2/thumbnail.png`, url: `${ASSETS}/glasses2/scene.gltf`,
-            scale: [0.01, 0.01, 0.01], position: [0, 0, 0] },
+            scale: [0.01, 0.01, 0.01], position: [0, 0, 0], rotation: [0, Math.PI / 2, 0] },
         ],
       },
       {
@@ -206,9 +210,9 @@
         variants: [
           { id: "none", label: "Немає" },
           { id: "hat1", thumb: `${THUMBS}/hat/thumbnail.png`, url: `${ASSETS}/hat/scene.gltf`,
-            scale: [0.35, 0.35, 0.35], position: [0, 1.0, -0.5] },
+            scale: [0.0080, 0.0080, 0.0080], position: [0.0700, -0.3200, -0.5000], rotation: [0, 0, 0] },
           { id: "hat2", thumb: `${THUMBS}/hat2/thumbnail.png`, url: `${ASSETS}/hat2/scene.gltf`,
-            scale: [0.35, 0.35, 0.35], position: [0, 1.0, -0.5] },
+            scale: [0.35, 0.35, 0.35], position: [0, 1.0, -0.5], rotation: [0, 0, 0] },
         ],
       },
       {
@@ -216,7 +220,7 @@
         variants: [
           { id: "none", label: "Немає" },
           { id: "earring1", thumb: `${THUMBS}/earring/thumbnail.png`, url: `${ASSETS}/earring/scene.gltf`,
-            scale: [0.01, 0.01, 0.01], position: [0, 0, 0] },
+            scale: [0.0480, 0.0480, 0.0480], position: [0.0000, -0.2250, 0.1550], rotation: [0, 0, 0] },
         ],
       },
     ];
@@ -267,6 +271,7 @@
             const gltf = await loadGLTF(variant.url);
             gltf.scene.scale.set(...variant.scale);
             gltf.scene.position.set(...variant.position);
+            if (variant.rotation) gltf.scene.rotation.set(...variant.rotation);
             gltf.scene.renderOrder = 1;
             gltf.scene.visible = false;
             getAnchor(cat.anchorIndex).group.add(gltf.scene);
@@ -345,10 +350,16 @@
     const adjX = document.getElementById("adjX");
     const adjY = document.getElementById("adjY");
     const adjZ = document.getElementById("adjZ");
+    const adjRotX = document.getElementById("adjRotX");
+    const adjRotY = document.getElementById("adjRotY");
+    const adjRotZ = document.getElementById("adjRotZ");
     const adjScaleVal = document.getElementById("adjScaleVal");
     const adjXVal = document.getElementById("adjXVal");
     const adjYVal = document.getElementById("adjYVal");
     const adjZVal = document.getElementById("adjZVal");
+    const adjRotXVal = document.getElementById("adjRotXVal");
+    const adjRotYVal = document.getElementById("adjRotYVal");
+    const adjRotZVal = document.getElementById("adjRotZVal");
 
     const openAdjustPanel = (catId, variantId) => {
       const scenes = loadedModels[variantId].scenes;
@@ -361,6 +372,9 @@
       adjX.value = s0.position.x;
       adjY.value = s0.position.y;
       adjZ.value = s0.position.z;
+      adjRotX.value = THREE.MathUtils.radToDeg(s0.rotation.x).toFixed(0);
+      adjRotY.value = THREE.MathUtils.radToDeg(s0.rotation.y).toFixed(0);
+      adjRotZ.value = THREE.MathUtils.radToDeg(s0.rotation.z).toFixed(0);
       updateAdjustLabels();
 
       document.getElementById("adjustVariantName").textContent = variantId;
@@ -377,6 +391,9 @@
       adjXVal.textContent = Number(adjX.value).toFixed(3);
       adjYVal.textContent = Number(adjY.value).toFixed(3);
       adjZVal.textContent = Number(adjZ.value).toFixed(3);
+      adjRotXVal.textContent = Number(adjRotX.value).toFixed(0) + "°";
+      adjRotYVal.textContent = Number(adjRotY.value).toFixed(0) + "°";
+      adjRotZVal.textContent = Number(adjRotZ.value).toFixed(0) + "°";
     };
 
     const applyAdjust = () => {
@@ -385,17 +402,23 @@
       const px = parseFloat(adjX.value);
       const py = parseFloat(adjY.value);
       const pz = parseFloat(adjZ.value);
+      const rx = THREE.MathUtils.degToRad(parseFloat(adjRotX.value));
+      const ry = THREE.MathUtils.degToRad(parseFloat(adjRotY.value));
+      const rz = THREE.MathUtils.degToRad(parseFloat(adjRotZ.value));
 
       adjustTarget.scenes.forEach((s, i) => {
         // Для сережок зберігаємо дзеркальний знак X-масштабу (ліва/права)
         const sign = adjustTarget.mirrored ? (i === 0 ? 1 : -1) : 1;
         s.scale.set(mag * sign, mag, mag);
         s.position.set(px, py, pz);
+        s.rotation.set(rx, ry, rz);
       });
       updateAdjustLabels();
     };
 
-    [adjScale, adjX, adjY, adjZ].forEach((input) => input.addEventListener("input", applyAdjust));
+    [adjScale, adjX, adjY, adjZ, adjRotX, adjRotY, adjRotZ].forEach((input) =>
+      input.addEventListener("input", applyAdjust)
+    );
 
     document.getElementById("adjustToggleBtn").addEventListener("click", () => {
       if (adjustPanel.classList.contains("visible")) {
@@ -415,7 +438,10 @@
       const px = parseFloat(adjX.value).toFixed(4);
       const py = parseFloat(adjY.value).toFixed(4);
       const pz = parseFloat(adjZ.value).toFixed(4);
-      const code = `scale: [${mag}, ${mag}, ${mag}], position: [${px}, ${py}, ${pz}]`;
+      const rx = (Math.PI * parseFloat(adjRotX.value) / 180).toFixed(4);
+      const ry = (Math.PI * parseFloat(adjRotY.value) / 180).toFixed(4);
+      const rz = (Math.PI * parseFloat(adjRotZ.value) / 180).toFixed(4);
+      const code = `scale: [${mag}, ${mag}, ${mag}], position: [${px}, ${py}, ${pz}], rotation: [${rx}, ${ry}, ${rz}]`;
       const output = document.getElementById("adjOutput");
       output.value = code;
       output.select();
