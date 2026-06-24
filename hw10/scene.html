@@ -80,6 +80,16 @@
       const { renderer, scene, camera } = mindarThree;
       renderer.setClearColor(0x000000, 0); // прозорий фон — щоб бачити відео з камери
 
+      // КЛЮЧОВИЙ МОМЕНТ: матеріал Face Mesh реагує на освітлення.
+      // Без жодного джерела світла він рендериться чорним незалежно
+      // від кольору чи текстури — саме так, як у офіційному прикладі
+      // документації MindAR.
+      const light1 = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+      scene.add(light1);
+      const light2 = new THREE.DirectionalLight(0xffffff, 0.6);
+      light2.position.set(-0.5, 1, 1);
+      scene.add(light2);
+
       // ---------------------------------------------------------------
       // Створення Face Mesh — єдиного динамічного об'єкту, що покриває
       // все обличчя всіма 468 опорними точками одночасно
@@ -94,6 +104,9 @@
       );
 
       faceMesh.material.map = maskTexture;
+      faceMesh.material.color.set(0xffffff); // важливо: текстура множиться на color,
+                                              // тож колір матеріалу має бути білим
+      faceMesh.material.vertexColors = false; // вимикаємо можливе перемноження на вершинні кольори
       faceMesh.material.transparent = true;
       faceMesh.material.needsUpdate = true;
 
