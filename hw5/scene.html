@@ -141,7 +141,9 @@
 
       anchor1.onTargetFound = () => {
         console.log("Маркер №1 (фламінго) знайдено");
+        if (listener.context.state === "suspended") listener.context.resume();
         flamingoAudio.play();
+        console.log("flamingoAudio.isPlaying:", flamingoAudio.isPlaying, "context:", listener.context.state);
       };
       anchor1.onTargetLost = () => {
         console.log("Маркер №1 (фламінго) втрачено");
@@ -178,7 +180,9 @@
 
       anchor2.onTargetFound = () => {
         console.log("Маркер №2 (аїст) знайдено");
+        if (listener.context.state === "suspended") listener.context.resume();
         storkAudio.play();
+        console.log("storkAudio.isPlaying:", storkAudio.isPlaying, "context:", listener.context.state);
       };
       anchor2.onTargetLost = () => {
         console.log("Маркер №2 (аїст) втрачено");
@@ -197,6 +201,20 @@
 
     document.getElementById("startButtonInner").addEventListener("click", () => {
       document.getElementById("startBtn").remove();
+
+      // КЛЮЧОВИЙ МОМЕНТ: AudioContext браузер створює у стані "suspended"
+      // і не відтворює звук, доки його не розблокувати саме в межах
+      // синхронного жесту користувача (клік). Без цього кроку моделі й
+      // анімація працюють нормально, а звук залишається "невидимо" вимкненим.
+      try {
+        const ctx = THREE.AudioContext.getContext();
+        if (ctx.state === "suspended") {
+          ctx.resume().then(() => console.log("AudioContext розблоковано, стан:", ctx.state));
+        }
+      } catch (e) {
+        console.warn("Не вдалося розблокувати AudioContext:", e);
+      }
+
       init();
     });
   </script>
