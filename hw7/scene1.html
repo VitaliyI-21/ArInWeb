@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>WebAR — Маркер №1: відео з YouTube (океан)</title>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image-three.prod.js"></script>
+
+<!-- Карта імпорту потрібна лише для CSS3DObject (модуль, відсутній у MindAR UMD-збірці) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.150.0/build/three.module.js",
+    "CSS3DRenderer": "https://unpkg.com/three@0.150.0/examples/jsm/renderers/CSS3DRenderer.js"
+  }
+}
+</script>
+
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #050507; font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; z-index: 20;
+    color: #e2e8f0; padding: 14px 16px; box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0));
+    pointer-events: none; font-size: 13px; line-height: 1.5;
+  }
+  #overlay a { color: #a5b4fc; text-decoration: none; pointer-events: all; }
+  #startBtn {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: #050507;
+  }
+  #startBtn button {
+    padding: 16px 30px; font-size: 17px; font-weight: 600;
+    background: #cc0000; color: #fff; border: none; border-radius: 10px;
+    cursor: pointer;
+  }
+  #startBtn button:hover { background: #a30000; }
+  #hint {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    z-index: 20; color: #cbd5e1; font-size: 12px; text-align: center;
+    background: rgba(0,0,0,0.45); padding: 8px 16px; border-radius: 8px;
+    max-width: 90%;
+  }
+
+  #ar-container { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #ar-container video,
+  #ar-container canvas {
+    position: absolute !important;
+    top: 50% !important; left: 50% !important;
+    width: 100% !important; height: 100% !important;
+    object-fit: cover !important;
+    transform: translate(-50%, -50%) !important;
+  }
+
+  /* Контейнер для CSS3D-об'єкта з відео YouTube */
+  #ar-div {
+    width: 1000px;
+    height: 562px; /* співвідношення сторін 16:9 */
+    visibility: hidden;
+  }
+  #player { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+
+  <div id="ar-container"></div>
+
+  <!-- Контейнер CSS3D з плеєром YouTube (поза #ar-container, бере участь лише як DOM-джерело для CSS3DObject) -->
+  <div id="ar-div">
+    <div id="player"></div>
+  </div>
+
+  <div id="startBtn">
+    <button id="startButtonInner">📷 Дозволити доступ до камери та запустити AR</button>
+  </div>
+
+  <div id="overlay">
+    Маркер №1 · Наведіть камеру на <b>youtube_marker.png</b> ·
+    <a href="index.html">← на головну</a>
+  </div>
+  <div id="hint">▶️ Відео з YouTube про океан автоматично запуститься при виявленні маркера</div>
+
+  <script type="module">
+    import { CSS3DObject } from "CSS3DRenderer";
+
+    const THREE = window.MINDAR.IMAGE.THREE;
+
+    // ---- Завантаження YouTube IFrame API та створення програвача ----
+    const YOUTUBE_VIDEO_ID = "cmKFfYk23_c"; // NOAA Ocean Today: "Know Your Ocean"
+
+    const createYoutube = (videoId) => {
+      return new Promise((resolve) => {
+        const tag = document.createElement("script");
+        tag.src = "https://www.youtube.com/iframe_api";
+        const firstScriptTag = document.getElementsByTagName("script")[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        window.onYouTubeIframeAPIReady = () => {
+          const player = new YT.Player("player", {
+            videoId: videoId,
+            playerVars: { playsinline: 1 },
+            events: {
+              onReady: () => resolve(player),
+            },
+          });
+        };
+      });
+    };
+
+    const init = async () => {
+      const player = await createYoutube(YOUTUBE_VIDEO_ID);
+
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.querySelector("#ar-container"),
+        imageTargetSrc: "./youtube_marker.mind", // скомпільований файл маркера №1
+        uiLoading: "no",
+        uiScanning: "no",
+        uiError: "no",
+      });
+      const { renderer, cssRenderer, scene, cssScene, camera } = mindarThree;
+      renderer.setClearColor(0x000000, 0); // прозорий фон — щоб бачити відео з камери
+
+      const obj = new CSS3DObject(document.querySelector("#ar-div"));
+      const cssAnchor = mindarThree.addCSSAnchor(0);
+      cssAnchor.group.add(obj);
+
+      player.seekTo(0);
+
+      cssAnchor.onTargetFound = () => {
+        console.log("Маркер №1 (YouTube) знайдено");
+        player.playVideo();
+      };
+      cssAnchor.onTargetLost = () => {
+        console.log("Маркер №1 (YouTube) втрачено");
+        player.pauseVideo();
+      };
+
+      await mindarThree.start();
+
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+        cssRenderer.render(cssScene, camera);
+      });
+    };
+
+    document.getElementById("startButtonInner").addEventListener("click", () => {
+      document.getElementById("startBtn").remove();
+      init();
+    });
+  </script>
+</body>
+</html>
