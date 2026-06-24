@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>WebAR — два маркери, анімація, просторовий звук</title>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image-three.prod.js"></script>
+
+<!-- Карта імпорту потрібна лише для GLTFLoader (модуль, відсутній у MindAR UMD-збірці) -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.150.0/build/three.module.js",
+    "GLTFLoader": "https://unpkg.com/three@0.150.0/examples/jsm/loaders/GLTFLoader.js"
+  }
+}
+</script>
+
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #050507; font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; z-index: 20;
+    color: #e2e8f0; padding: 14px 16px; box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0));
+    pointer-events: none; font-size: 13px; line-height: 1.5;
+  }
+  #overlay a { color: #a5b4fc; text-decoration: none; pointer-events: all; }
+  #startBtn {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: #050507;
+  }
+  #startBtn button {
+    padding: 16px 30px; font-size: 17px; font-weight: 600;
+    background: #6366f1; color: #fff; border: none; border-radius: 10px;
+    cursor: pointer;
+  }
+  #startBtn button:hover { background: #4f46e5; }
+  #hint {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    z-index: 20; color: #cbd5e1; font-size: 12px; text-align: center;
+    background: rgba(0,0,0,0.45); padding: 8px 16px; border-radius: 8px;
+    max-width: 90%;
+  }
+
+  #ar-container { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #ar-container video,
+  #ar-container canvas {
+    position: absolute !important;
+    top: 50% !important; left: 50% !important;
+    width: 100% !important; height: 100% !important;
+    object-fit: cover !important;
+    transform: translate(-50%, -50%) !important;
+  }
+</style>
+</head>
+<body>
+
+  <div id="ar-container"></div>
+
+  <div id="startBtn">
+    <button id="startButtonInner">📷🔊 Дозволити камеру й звук та запустити AR</button>
+  </div>
+
+  <div id="overlay">
+    Наведіть камеру на <b>marker1.png</b> (фламінго) або <b>marker2.png</b> (аїст) ·
+    <a href="index.html">← на головну</a>
+  </div>
+  <div id="hint">🦩 Маркер №1 → анімований фламінго + звук · 🦢 Маркер №2 → анімований аїст + звук (можна одночасно)</div>
+
+  <script type="module">
+    import { GLTFLoader } from "GLTFLoader";
+
+    const THREE = window.MINDAR.IMAGE.THREE;
+
+    const loadModel = (url) => {
+      const loader = new GLTFLoader();
+      return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+    };
+
+    const loadAudioBuffer = (url) => {
+      const loader = new THREE.AudioLoader();
+      return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+    };
+
+    const init = async () => {
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.querySelector("#ar-container"),
+        // ОДИН файл .mind, скомпільований з ДВОХ зображень (marker1.png, потім marker2.png)
+        imageTargetSrc: "./targets.mind",
+        maxTrack: 2, // дозволяє одночасно відстежувати обидва маркери
+        uiLoading: "no",
+        uiScanning: "no",
+        uiError: "no",
+      });
+      const { renderer, scene, camera } = mindarThree;
+      renderer.setClearColor(0x000000, 0); // прозорий фон — щоб бачити відео з камери
+
+      // Освітлення — потрібне для GLTF-моделей (MeshStandardMaterial реагує на світло)
+      const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+      scene.add(light);
+
+      // Слухач для просторового (позиційного) звуку — прив'язаний до камери
+      const listener = new THREE.AudioListener();
+      camera.add(listener);
+
+      const clock = new THREE.Clock();
+      const mixers = [];
+
+      // ----------------------------------------------------------------
+      // Якір №0 — відповідає marker1.png: анімований фламінго + звук
+      // ----------------------------------------------------------------
+      const anchor1 = mindarThree.addAnchor(0);
+
+      const flamingo = await loadModel(
+        "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Flamingo.glb"
+      );
+      flamingo.scene.scale.set(0.0035, 0.0035, 0.0035);
+      flamingo.scene.position.set(0, -0.3, 0);
+      anchor1.group.add(flamingo.scene);
+
+      const flamingoMixer = new THREE.AnimationMixer(flamingo.scene);
+      if (flamingo.animations.length > 0) {
+        flamingoMixer.clipAction(flamingo.animations[0]).play();
+      }
+      mixers.push(flamingoMixer);
+
+      const flamingoAudioBuffer = await loadAudioBuffer(
+        "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/sounds/358232_j_s_song.mp3"
+      );
+      const flamingoAudio = new THREE.PositionalAudio(listener);
+      flamingoAudio.setBuffer(flamingoAudioBuffer);
+      flamingoAudio.setRefDistance(0.5);
+      flamingoAudio.setLoop(true);
+      flamingoAudio.setVolume(1.0);
+      anchor1.group.add(flamingoAudio); // звук "лунає" з місця маркера №1
+
+      anchor1.onTargetFound = () => {
+        console.log("Маркер №1 (фламінго) знайдено");
+        flamingoAudio.play();
+      };
+      anchor1.onTargetLost = () => {
+        console.log("Маркер №1 (фламінго) втрачено");
+        if (flamingoAudio.isPlaying) flamingoAudio.pause();
+      };
+
+      // ----------------------------------------------------------------
+      // Якір №1 — відповідає marker2.png: анімований аїст + звук
+      // ----------------------------------------------------------------
+      const anchor2 = mindarThree.addAnchor(1);
+
+      const stork = await loadModel(
+        "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Stork.glb"
+      );
+      stork.scene.scale.set(0.0035, 0.0035, 0.0035);
+      stork.scene.position.set(0, -0.3, 0);
+      anchor2.group.add(stork.scene);
+
+      const storkMixer = new THREE.AnimationMixer(stork.scene);
+      if (stork.animations.length > 0) {
+        storkMixer.clipAction(stork.animations[0]).play();
+      }
+      mixers.push(storkMixer);
+
+      const storkAudioBuffer = await loadAudioBuffer(
+        "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/sounds/376737_Skullbeatz___Bad_Cat_Maste.mp3"
+      );
+      const storkAudio = new THREE.PositionalAudio(listener);
+      storkAudio.setBuffer(storkAudioBuffer);
+      storkAudio.setRefDistance(0.5);
+      storkAudio.setLoop(true);
+      storkAudio.setVolume(1.0);
+      anchor2.group.add(storkAudio); // звук "лунає" з місця маркера №2
+
+      anchor2.onTargetFound = () => {
+        console.log("Маркер №2 (аїст) знайдено");
+        storkAudio.play();
+      };
+      anchor2.onTargetLost = () => {
+        console.log("Маркер №2 (аїст) втрачено");
+        if (storkAudio.isPlaying) storkAudio.pause();
+      };
+
+      // ----------------------------------------------------------------
+      await mindarThree.start();
+
+      renderer.setAnimationLoop(() => {
+        const delta = clock.getDelta();
+        mixers.forEach((m) => m.update(delta));
+        renderer.render(scene, camera);
+      });
+    };
+
+    document.getElementById("startButtonInner").addEventListener("click", () => {
+      document.getElementById("startBtn").remove();
+      init();
+    });
+  </script>
+</body>
+</html>
