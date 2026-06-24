@@ -105,29 +105,6 @@
   #previewModal .share { background: #6366f1; color: #fff; }
   #previewModal .download { background: #22c55e; color: #fff; }
   #previewModal .close { background: rgba(255,255,255,0.15); color: #fff; }
-
-  #adjustPanel {
-    position: fixed; right: 10px; bottom: 100px; z-index: 30;
-    background: rgba(15,23,42,0.92); border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 12px; padding: 14px; width: 260px; color: #e2e8f0;
-    font-size: 13px; display: none; flex-direction: column; gap: 8px;
-    max-height: 70vh; overflow-y: auto;
-  }
-  #adjustPanel.visible { display: flex; }
-  #adjustPanel .adjust-title { font-weight: 600; margin-bottom: 4px; }
-  #adjustPanel label { display: flex; align-items: center; gap: 6px; }
-  #adjustPanel input[type="range"] { flex: 1; }
-  #adjustPanel span { width: 48px; text-align: right; font-family: monospace; font-size: 11px; }
-  #adjustPanel .row { display: flex; gap: 8px; margin-top: 4px; }
-  #adjustPanel .row button {
-    flex: 1; padding: 8px; border-radius: 8px; border: none;
-    background: rgba(255,255,255,0.12); color: #fff; font-size: 12px; cursor: pointer;
-  }
-  #adjustPanel textarea {
-    width: 100%; height: 70px; background: #0f172a; color: #86efac;
-    font-family: monospace; font-size: 11px; border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 8px; padding: 6px; resize: none;
-  }
 </style>
 </head>
 <body>
@@ -149,7 +126,6 @@
     <div id="actionBar">
       <button id="switchCamBtn" title="Інша камера">🔄</button>
       <button id="captureBtn" title="Зробити фото">📸</button>
-      <button id="adjustToggleBtn" title="Підбір розміру">🛠️</button>
       <button id="hideUiBtn" title="Сховати інтерфейс">🙈</button>
     </div>
   </div>
@@ -161,22 +137,6 @@
       <button class="download" id="downloadBtn">⬇️ Завантажити</button>
       <button class="close" id="closePreviewBtn">✕ Закрити</button>
     </div>
-  </div>
-
-  <div id="adjustPanel">
-    <div class="adjust-title">🛠️ Підбір розміру/позиції — <span id="adjustVariantName"></span></div>
-    <label>Масштаб <input type="range" id="adjScale" min="0.001" max="0.6" step="0.001" /> <span id="adjScaleVal"></span></label>
-    <label>X <input type="range" id="adjX" min="-1" max="1" step="0.005" /> <span id="adjXVal"></span></label>
-    <label>Y <input type="range" id="adjY" min="-1" max="1" step="0.005" /> <span id="adjYVal"></span></label>
-    <label>Z <input type="range" id="adjZ" min="-2" max="1" step="0.005" /> <span id="adjZVal"></span></label>
-    <label>Поворот X° <input type="range" id="adjRotX" min="-180" max="180" step="1" /> <span id="adjRotXVal"></span></label>
-    <label>Поворот Y° <input type="range" id="adjRotY" min="-180" max="180" step="1" /> <span id="adjRotYVal"></span></label>
-    <label>Поворот Z° <input type="range" id="adjRotZ" min="-180" max="180" step="1" /> <span id="adjRotZVal"></span></label>
-    <div class="row">
-      <button id="adjCopyBtn">📋 Скопіювати параметри</button>
-      <button id="adjCloseBtn">✕ Сховати</button>
-    </div>
-    <textarea id="adjOutput" readonly placeholder="Тут з'явиться готовий код scale/position/rotation для вставки в CATEGORIES..."></textarea>
   </div>
 
   <script type="module">
@@ -290,9 +250,6 @@
       currentSelection[catId] = variantId;
       if (variantId !== "none" && loadedModels[variantId]) {
         loadedModels[variantId].scenes.forEach((s) => (s.visible = true));
-        openAdjustPanel(catId, variantId);
-      } else {
-        closeAdjustPanel();
       }
     };
 
@@ -339,118 +296,6 @@
         }
       });
     };
-
-    // ------------------------------------------------------------------
-    // Панель інтерактивного підбору scale/position для поточного аксесуара
-    // ------------------------------------------------------------------
-    let adjustTarget = null; // { catId, variantId, scenes, mirrored }
-
-    const adjustPanel = document.getElementById("adjustPanel");
-    const adjScale = document.getElementById("adjScale");
-    const adjX = document.getElementById("adjX");
-    const adjY = document.getElementById("adjY");
-    const adjZ = document.getElementById("adjZ");
-    const adjRotX = document.getElementById("adjRotX");
-    const adjRotY = document.getElementById("adjRotY");
-    const adjRotZ = document.getElementById("adjRotZ");
-    const adjScaleVal = document.getElementById("adjScaleVal");
-    const adjXVal = document.getElementById("adjXVal");
-    const adjYVal = document.getElementById("adjYVal");
-    const adjZVal = document.getElementById("adjZVal");
-    const adjRotXVal = document.getElementById("adjRotXVal");
-    const adjRotYVal = document.getElementById("adjRotYVal");
-    const adjRotZVal = document.getElementById("adjRotZVal");
-
-    const openAdjustPanel = (catId, variantId) => {
-      const scenes = loadedModels[variantId].scenes;
-      const mirrored = scenes.length === 2 && catId === "earrings";
-      adjustTarget = { catId, variantId, scenes, mirrored };
-
-      const s0 = scenes[0];
-      const mag = Math.abs(s0.scale.x);
-      adjScale.value = mag;
-      adjX.value = s0.position.x;
-      adjY.value = s0.position.y;
-      adjZ.value = s0.position.z;
-      adjRotX.value = THREE.MathUtils.radToDeg(s0.rotation.x).toFixed(0);
-      adjRotY.value = THREE.MathUtils.radToDeg(s0.rotation.y).toFixed(0);
-      adjRotZ.value = THREE.MathUtils.radToDeg(s0.rotation.z).toFixed(0);
-      updateAdjustLabels();
-
-      document.getElementById("adjustVariantName").textContent = variantId;
-      adjustPanel.classList.add("visible");
-    };
-
-    const closeAdjustPanel = () => {
-      adjustTarget = null;
-      adjustPanel.classList.remove("visible");
-    };
-
-    const updateAdjustLabels = () => {
-      adjScaleVal.textContent = Number(adjScale.value).toFixed(3);
-      adjXVal.textContent = Number(adjX.value).toFixed(3);
-      adjYVal.textContent = Number(adjY.value).toFixed(3);
-      adjZVal.textContent = Number(adjZ.value).toFixed(3);
-      adjRotXVal.textContent = Number(adjRotX.value).toFixed(0) + "°";
-      adjRotYVal.textContent = Number(adjRotY.value).toFixed(0) + "°";
-      adjRotZVal.textContent = Number(adjRotZ.value).toFixed(0) + "°";
-    };
-
-    const applyAdjust = () => {
-      if (!adjustTarget) return;
-      const mag = parseFloat(adjScale.value);
-      const px = parseFloat(adjX.value);
-      const py = parseFloat(adjY.value);
-      const pz = parseFloat(adjZ.value);
-      const rx = THREE.MathUtils.degToRad(parseFloat(adjRotX.value));
-      const ry = THREE.MathUtils.degToRad(parseFloat(adjRotY.value));
-      const rz = THREE.MathUtils.degToRad(parseFloat(adjRotZ.value));
-
-      adjustTarget.scenes.forEach((s, i) => {
-        // Для сережок зберігаємо дзеркальний знак X-масштабу (ліва/права)
-        const sign = adjustTarget.mirrored ? (i === 0 ? 1 : -1) : 1;
-        s.scale.set(mag * sign, mag, mag);
-        s.position.set(px, py, pz);
-        s.rotation.set(rx, ry, rz);
-      });
-      updateAdjustLabels();
-    };
-
-    [adjScale, adjX, adjY, adjZ, adjRotX, adjRotY, adjRotZ].forEach((input) =>
-      input.addEventListener("input", applyAdjust)
-    );
-
-    document.getElementById("adjustToggleBtn").addEventListener("click", () => {
-      if (adjustPanel.classList.contains("visible")) {
-        closeAdjustPanel();
-      } else {
-        const activeCat = Object.keys(currentSelection).find((c) => currentSelection[c] !== "none");
-        if (activeCat) openAdjustPanel(activeCat, currentSelection[activeCat]);
-        else alert("Спочатку виберіть якийсь аксесуар знизу.");
-      }
-    });
-
-    document.getElementById("adjCloseBtn").addEventListener("click", closeAdjustPanel);
-
-    document.getElementById("adjCopyBtn").addEventListener("click", () => {
-      if (!adjustTarget) return;
-      const mag = parseFloat(adjScale.value).toFixed(4);
-      const px = parseFloat(adjX.value).toFixed(4);
-      const py = parseFloat(adjY.value).toFixed(4);
-      const pz = parseFloat(adjZ.value).toFixed(4);
-      const rx = (Math.PI * parseFloat(adjRotX.value) / 180).toFixed(4);
-      const ry = (Math.PI * parseFloat(adjRotY.value) / 180).toFixed(4);
-      const rz = (Math.PI * parseFloat(adjRotZ.value) / 180).toFixed(4);
-      const code = `scale: [${mag}, ${mag}, ${mag}], position: [${px}, ${py}, ${pz}], rotation: [${rx}, ${ry}, ${rz}]`;
-      const output = document.getElementById("adjOutput");
-      output.value = code;
-      output.select();
-      try {
-        document.execCommand("copy");
-      } catch (e) {
-        /* буфер обміну може бути недоступний — значення видно в полі нижче */
-      }
-    });
 
     // ------------------------------------------------------------------
     // Захоплення кадру (відео + 3D-рендер в одне зображення)
