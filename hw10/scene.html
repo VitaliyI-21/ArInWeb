@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>WebAR — Власна маска обличчя (MindAR Face Mesh)</title>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-face-three.prod.js"></script>
+
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #050507; font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; z-index: 20;
+    color: #e2e8f0; padding: 14px 16px; box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0));
+    pointer-events: none; font-size: 13px; line-height: 1.5;
+  }
+  #overlay a { color: #a5b4fc; text-decoration: none; pointer-events: all; }
+  #startBtn {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: #050507;
+  }
+  #startBtn button {
+    padding: 16px 30px; font-size: 17px; font-weight: 600;
+    background: #d946ef; color: #fff; border: none; border-radius: 10px;
+    cursor: pointer;
+  }
+  #startBtn button:hover { background: #a21caf; }
+  #hint {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    z-index: 20; color: #cbd5e1; font-size: 12px; text-align: center;
+    background: rgba(0,0,0,0.45); padding: 8px 16px; border-radius: 8px;
+    max-width: 92%;
+  }
+  #toggleVideoBtn {
+    position: absolute; top: 14px; right: 14px; z-index: 20;
+    padding: 8px 14px; font-size: 12px; border: none; border-radius: 8px;
+    background: rgba(15,23,42,0.7); color: #e2e8f0; cursor: pointer;
+  }
+
+  #ar-container { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #ar-container video,
+  #ar-container canvas {
+    position: absolute !important;
+    top: 50% !important; left: 50% !important;
+    width: 100% !important; height: 100% !important;
+    object-fit: cover !important;
+    transform: translate(-50%, -50%) !important;
+  }
+</style>
+</head>
+<body>
+
+  <div id="ar-container"></div>
+
+  <div id="startBtn">
+    <button id="startButtonInner">📷 Дозволити доступ до камери та запустити AR</button>
+  </div>
+
+  <div id="overlay">
+    Наведіть камеру на своє обличчя · <a href="index.html">← на головну</a>
+  </div>
+  <button id="toggleVideoBtn">🎥 Сховати відео (лише маска)</button>
+  <div id="hint">🎭 Власна неонова маска накладена на динамічну сітку обличчя (468 точок)</div>
+
+  <script>
+    const THREE = window.MINDAR.FACE.THREE;
+
+    const init = async () => {
+      const mindarThree = new window.MINDAR.FACE.MindARThree({
+        container: document.querySelector("#ar-container"),
+        uiLoading: "no",
+        uiScanning: "no",
+        uiError: "no",
+      });
+      const { renderer, scene, camera } = mindarThree;
+      renderer.setClearColor(0x000000, 0); // прозорий фон — щоб бачити відео з камери
+
+      // ---------------------------------------------------------------
+      // Створення Face Mesh — єдиного динамічного об'єкту, що покриває
+      // все обличчя всіма 468 опорними точками одночасно
+      // ---------------------------------------------------------------
+      const faceMesh = mindarThree.addFaceMesh();
+      scene.add(faceMesh);
+
+      // ---- Накладання власної текстури маски ----
+      const loader = new THREE.TextureLoader();
+      const maskTexture = await new Promise((resolve, reject) =>
+        loader.load("./mask_texture.png", resolve, undefined, reject)
+      );
+
+      faceMesh.material.map = maskTexture;
+      faceMesh.material.transparent = true;
+      faceMesh.material.needsUpdate = true;
+
+      // ---- Перемикач: показати/сховати відеопотік камери (ефект "лише маска") ----
+      let videoHidden = false;
+      document.getElementById("toggleVideoBtn").addEventListener("click", () => {
+        videoHidden = !videoHidden;
+        const video = mindarThree.video;
+        if (video) {
+          video.style.visibility = videoHidden ? "hidden" : "visible";
+        }
+        document.getElementById("toggleVideoBtn").textContent = videoHidden
+          ? "🎥 Показати відео"
+          : "🎥 Сховати відео (лише маска)";
+      });
+
+      await mindarThree.start();
+
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+      });
+    };
+
+    document.getElementById("startButtonInner").addEventListener("click", () => {
+      document.getElementById("startBtn").remove();
+      init();
+    });
+  </script>
+</body>
+</html>
