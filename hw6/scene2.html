@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>WebAR — Маркер №2: модель корабля</title>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image-three.prod.js"></script>
+
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #050507; font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; z-index: 20;
+    color: #e2e8f0; padding: 14px 16px; box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0));
+    pointer-events: none; font-size: 13px; line-height: 1.5;
+  }
+  #overlay a { color: #a5b4fc; text-decoration: none; pointer-events: all; }
+  #startBtn {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: #050507;
+  }
+  #startBtn button {
+    padding: 16px 30px; font-size: 17px; font-weight: 600;
+    background: #92400e; color: #fff; border: none; border-radius: 10px;
+    cursor: pointer;
+  }
+  #startBtn button:hover { background: #78350f; }
+  #hint {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    z-index: 20; color: #cbd5e1; font-size: 12px; text-align: center;
+    background: rgba(0,0,0,0.45); padding: 8px 16px; border-radius: 8px;
+    max-width: 90%;
+  }
+
+  #ar-container { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #ar-container video,
+  #ar-container canvas {
+    position: absolute !important;
+    top: 50% !important; left: 50% !important;
+    width: 100% !important; height: 100% !important;
+    object-fit: cover !important;
+    transform: translate(-50%, -50%) !important;
+  }
+</style>
+</head>
+<body>
+
+  <div id="ar-container"></div>
+
+  <div id="startBtn">
+    <button id="startButtonInner">📷 Дозволити доступ до камери та запустити AR</button>
+  </div>
+
+  <div id="overlay">
+    Маркер №2 · Наведіть камеру на <b>ship_marker.png</b> ·
+    <a href="index.html">← на головну</a>
+  </div>
+  <div id="hint">⛵ Торкніться корабля — він повернеться на випадковий кут (45–90°) навколо вісі Z</div>
+
+  <script>
+    const THREE = window.MINDAR.IMAGE.THREE;
+
+    // ---- Побудова простої процедурної моделі корабля з примітивів Three.js ----
+    function buildShip(THREE) {
+      const ship = new THREE.Group();
+
+      // Корпус
+      const hullGeo = new THREE.BoxGeometry(0.9, 0.18, 0.3);
+      const hullMat = new THREE.MeshStandardMaterial({ color: 0x6b4226 });
+      const hull = new THREE.Mesh(hullGeo, hullMat);
+      hull.position.set(0, 0, 0);
+      ship.add(hull);
+
+      // Носова частина (трохи звужена коробка нагадує форму корпусу)
+      const bowGeo = new THREE.ConeGeometry(0.16, 0.3, 4);
+      const bow = new THREE.Mesh(bowGeo, hullMat);
+      bow.rotation.z = Math.PI / 2;
+      bow.position.set(0.55, 0, 0);
+      ship.add(bow);
+
+      // Палуба
+      const deckGeo = new THREE.BoxGeometry(0.85, 0.04, 0.28);
+      const deckMat = new THREE.MeshStandardMaterial({ color: 0x8d6e4e });
+      const deck = new THREE.Mesh(deckGeo, deckMat);
+      deck.position.set(-0.05, 0.11, 0);
+      ship.add(deck);
+
+      // Мачта
+      const mastGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.6, 8);
+      const mastMat = new THREE.MeshStandardMaterial({ color: 0x3f2a1d });
+      const mast = new THREE.Mesh(mastGeo, mastMat);
+      mast.position.set(-0.05, 0.42, 0);
+      ship.add(mast);
+
+      // Парус
+      const sailGeo = new THREE.PlaneGeometry(0.4, 0.45);
+      const sailMat = new THREE.MeshStandardMaterial({
+        color: 0xf5f0e6,
+        side: THREE.DoubleSide,
+      });
+      const sail = new THREE.Mesh(sailGeo, sailMat);
+      sail.position.set(-0.05, 0.42, 0.001);
+      ship.add(sail);
+
+      // Прапор
+      const flagGeo = new THREE.PlaneGeometry(0.08, 0.05);
+      const flagMat = new THREE.MeshStandardMaterial({
+        color: 0xb91c1c,
+        side: THREE.DoubleSide,
+      });
+      const flag = new THREE.Mesh(flagGeo, flagMat);
+      flag.position.set(-0.01, 0.74, 0);
+      ship.add(flag);
+
+      return ship;
+    }
+
+    const init = async () => {
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.querySelector("#ar-container"),
+        imageTargetSrc: "./ship_marker.mind", // скомпільований файл маркера №2
+        uiLoading: "no",
+        uiScanning: "no",
+        uiError: "no",
+      });
+      const { renderer, scene, camera } = mindarThree;
+      renderer.setClearColor(0x000000, 0);
+
+      // Освітлення — потрібне, бо корабель використовує MeshStandardMaterial
+      const light = new THREE.HemisphereLight(0xffffff, 0x55411f, 1.1);
+      scene.add(light);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+      dirLight.position.set(1, 2, 1);
+      scene.add(dirLight);
+
+      const anchor = mindarThree.addAnchor(0);
+
+      const ship = buildShip(THREE);
+      ship.scale.set(0.9, 0.9, 0.9);
+      ship.position.set(0, -0.15, 0);
+      ship.userData.clickable = true; // позначаємо як об'єкт, що реагує на клік
+      anchor.group.add(ship);
+
+      anchor.onTargetFound = () => console.log("Маркер №2 (корабель) знайдено");
+      anchor.onTargetLost = () => console.log("Маркер №2 (корабель) втрачено");
+
+      // ---- Обробка кліків: поворот навколо Z на випадковий кут 45–90° ----
+      document.body.addEventListener("click", (e) => {
+        const mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+        const mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        const mouse = new THREE.Vector2(mouseX, mouseY);
+
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+
+        if (intersects.length > 0) {
+          let o = intersects[0].object;
+          while (o.parent && !o.userData.clickable) o = o.parent;
+
+          if (o.userData.clickable && o === ship) {
+            const angleDeg = 45 + Math.random() * 45;
+            const angleRad = (angleDeg * Math.PI) / 180;
+            ship.rotation.z += angleRad;
+            console.log(`Поворот корабля на ${angleDeg.toFixed(1)}° навколо Z`);
+          }
+        }
+      });
+
+      await mindarThree.start();
+
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+      });
+    };
+
+    document.getElementById("startButtonInner").addEventListener("click", () => {
+      document.getElementById("startBtn").remove();
+      init();
+    });
+  </script>
+</body>
+</html>

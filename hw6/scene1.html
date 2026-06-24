@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>WebAR — Маркер №1: відео океану</title>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-image-three.prod.js"></script>
+
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #050507; font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; z-index: 20;
+    color: #e2e8f0; padding: 14px 16px; box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0));
+    pointer-events: none; font-size: 13px; line-height: 1.5;
+  }
+  #overlay a { color: #a5b4fc; text-decoration: none; pointer-events: all; }
+  #startBtn {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; align-items: center; justify-content: center;
+    background: #050507;
+  }
+  #startBtn button {
+    padding: 16px 30px; font-size: 17px; font-weight: 600;
+    background: #0284c7; color: #fff; border: none; border-radius: 10px;
+    cursor: pointer;
+  }
+  #startBtn button:hover { background: #0369a1; }
+  #hint {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    z-index: 20; color: #cbd5e1; font-size: 12px; text-align: center;
+    background: rgba(0,0,0,0.45); padding: 8px 16px; border-radius: 8px;
+    max-width: 90%;
+  }
+
+  #ar-container { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #ar-container video,
+  #ar-container canvas {
+    position: absolute !important;
+    top: 50% !important; left: 50% !important;
+    width: 100% !important; height: 100% !important;
+    object-fit: cover !important;
+    transform: translate(-50%, -50%) !important;
+  }
+</style>
+</head>
+<body>
+
+  <div id="ar-container"></div>
+
+  <div id="startBtn">
+    <button id="startButtonInner">📷 Дозволити доступ до камери та запустити AR</button>
+  </div>
+
+  <div id="overlay">
+    Маркер №1 · Наведіть камеру на <b>ocean_marker.png</b> ·
+    <a href="index.html">← на головну</a>
+  </div>
+  <div id="hint">🌊 Торкніться відео — воно повернеться на випадковий кут (45–90°) навколо вісі Z</div>
+
+  <script>
+    const THREE = window.MINDAR.IMAGE.THREE;
+
+    const init = async () => {
+      const mindarThree = new window.MINDAR.IMAGE.MindARThree({
+        container: document.querySelector("#ar-container"),
+        imageTargetSrc: "./ocean_marker.mind", // скомпільований файл маркера №1
+        uiLoading: "no",
+        uiScanning: "no",
+        uiError: "no",
+      });
+      const { renderer, scene, camera } = mindarThree;
+      renderer.setClearColor(0x000000, 0); // прозорий фон — щоб бачити відео з камери
+
+      const anchor = mindarThree.addAnchor(0);
+
+      // ---- Відео про океан (накладається текстурою на площину) ----
+      const video = document.createElement("video");
+      video.crossOrigin = "anonymous";
+      video.loop = true;
+      video.muted = true; // потрібно для автозапуску у браузерах
+      video.playsInline = true;
+      video.src = "https://vjs.zencdn.net/v/oceans.mp4"; // довільне відео про океан
+
+      const videoTexture = new THREE.VideoTexture(video);
+
+      const geometry = new THREE.PlaneGeometry(1, 9 / 16);
+      const material = new THREE.MeshBasicMaterial({ map: videoTexture });
+      const plane = new THREE.Mesh(geometry, material);
+      plane.userData.clickable = true; // позначаємо як об'єкт, що реагує на клік
+      anchor.group.add(plane);
+
+      // Відтворення відео лише при виявленні маркера, пауза — при втраті
+      anchor.onTargetFound = () => {
+        console.log("Маркер №1 (океан) знайдено");
+        video.play().catch(() => {});
+      };
+      anchor.onTargetLost = () => {
+        console.log("Маркер №1 (океан) втрачено");
+        video.pause();
+      };
+
+      // ---- Обробка кліків: поворот навколо Z на випадковий кут 45–90° ----
+      document.body.addEventListener("click", (e) => {
+        const mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+        const mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+        const mouse = new THREE.Vector2(mouseX, mouseY);
+
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+
+        if (intersects.length > 0) {
+          let o = intersects[0].object;
+          while (o.parent && !o.userData.clickable) o = o.parent;
+
+          if (o.userData.clickable && o === plane) {
+            // Випадковий кут від 45 до 90 градусів, переведений у радіани
+            const angleDeg = 45 + Math.random() * 45;
+            const angleRad = (angleDeg * Math.PI) / 180;
+            plane.rotation.z += angleRad;
+            console.log(`Поворот відео на ${angleDeg.toFixed(1)}° навколо Z`);
+          }
+        }
+      });
+
+      await mindarThree.start();
+
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+      });
+    };
+
+    document.getElementById("startButtonInner").addEventListener("click", () => {
+      document.getElementById("startBtn").remove();
+      init();
+    });
+  </script>
+</body>
+</html>
