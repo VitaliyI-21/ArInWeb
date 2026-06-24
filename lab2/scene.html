@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>Віртуальна примірочна — WebAR</title>
+
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.1.5/dist/mindar-face-three.prod.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.150.0/build/three.module.js",
+    "GLTFLoader": "https://unpkg.com/three@0.150.0/examples/jsm/loaders/GLTFLoader.js"
+  }
+}
+</script>
+
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #050507; font-family: 'Segoe UI', Arial, sans-serif;
+  }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; z-index: 20;
+    color: #e2e8f0; padding: 14px 16px; box-sizing: border-box;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), rgba(0,0,0,0));
+    pointer-events: none; font-size: 13px; line-height: 1.5;
+  }
+  #overlay a { color: #a5b4fc; text-decoration: none; pointer-events: all; }
+  #startBtn {
+    position: fixed; inset: 0; z-index: 40;
+    display: flex; align-items: center; justify-content: center;
+    background: #050507;
+  }
+  #startBtn button {
+    padding: 16px 30px; font-size: 17px; font-weight: 600;
+    background: #16a34a; color: #fff; border: none; border-radius: 10px;
+    cursor: pointer;
+  }
+  #startBtn button:hover { background: #15803d; }
+
+  #ar-container { position: fixed; inset: 0; width: 100vw; height: 100vh; overflow: hidden; }
+  #ar-container video,
+  #ar-container canvas {
+    position: absolute !important;
+    top: 50% !important; left: 50% !important;
+    width: 100% !important; height: 100% !important;
+    object-fit: cover !important;
+    transform: translate(-50%, -50%) !important;
+  }
+
+  /* ---- Нижня панель керування ---- */
+  #ui {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 10px 8px 16px; gap: 8px;
+    background: linear-gradient(to top, rgba(0,0,0,0.75), rgba(0,0,0,0));
+  }
+
+  #variantBar {
+    display: flex; gap: 8px; overflow-x: auto; max-width: 100%;
+    padding: 4px;
+  }
+  .variant-thumb {
+    width: 56px; height: 56px; border-radius: 10px; flex-shrink: 0;
+    border: 3px solid rgba(255,255,255,0.25); cursor: pointer;
+    background: #1e293b center/cover no-repeat; opacity: 0.7;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: #e2e8f0;
+  }
+  .variant-thumb.selected { border-color: #22c55e; opacity: 1; }
+
+  #categoryBar { display: flex; gap: 10px; }
+  .cat-btn {
+    padding: 10px 16px; border-radius: 999px; border: none;
+    background: rgba(255,255,255,0.1); color: #e2e8f0; font-size: 14px;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .cat-btn.active { background: #6366f1; color: #fff; }
+
+  #actionBar { display: flex; gap: 14px; margin-top: 4px; }
+  #actionBar button {
+    width: 56px; height: 56px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,0.12); color: #fff; font-size: 22px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  #captureBtn { background: #fff !important; color: #111 !important; width: 64px; height: 64px; font-size: 26px; }
+
+  #flash {
+    position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none;
+    z-index: 50; transition: opacity 0.1s;
+  }
+
+  #previewModal {
+    position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.85);
+    display: none; align-items: center; justify-content: center; flex-direction: column; gap: 16px;
+  }
+  #previewModal img { max-width: 90vw; max-height: 70vh; border-radius: 12px; border: 2px solid #334155; }
+  #previewModal .row { display: flex; gap: 12px; }
+  #previewModal button {
+    padding: 12px 22px; border-radius: 10px; border: none; font-size: 15px; cursor: pointer;
+  }
+  #previewModal .share { background: #6366f1; color: #fff; }
+  #previewModal .download { background: #22c55e; color: #fff; }
+  #previewModal .close { background: rgba(255,255,255,0.15); color: #fff; }
+</style>
+</head>
+<body>
+
+  <div id="ar-container"></div>
+  <div id="flash"></div>
+
+  <div id="startBtn">
+    <button id="startButtonInner">📷 Дозволити доступ до камери та запустити примірочну</button>
+  </div>
+
+  <div id="overlay">
+    Віртуальна примірочна · <a href="index.html">← на головну</a>
+  </div>
+
+  <div id="ui">
+    <div id="variantBar"></div>
+    <div id="categoryBar"></div>
+    <div id="actionBar">
+      <button id="switchCamBtn" title="Інша камера">🔄</button>
+      <button id="captureBtn" title="Зробити фото">📸</button>
+      <button id="hideUiBtn" title="Сховати інтерфейс">🙈</button>
+    </div>
+  </div>
+
+  <div id="previewModal">
+    <img id="previewImg" alt="AR фото" />
+    <div class="row">
+      <button class="share" id="shareBtn">📤 Поділитися</button>
+      <button class="download" id="downloadBtn">⬇️ Завантажити</button>
+      <button class="close" id="closePreviewBtn">✕ Закрити</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { GLTFLoader } from "GLTFLoader";
+
+    const THREE = window.MINDAR.FACE.THREE;
+    const ASSETS = "https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.1.4/examples/face-tracking/assets";
+    const THUMBS = "https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.0.1/examples/face-tracking/assets";
+
+    const loadGLTF = (url) => {
+      const loader = new GLTFLoader();
+      return new Promise((resolve, reject) => loader.load(url, resolve, undefined, reject));
+    };
+
+    // ------------------------------------------------------------------
+    // Конфігурація категорій та варіантів аксесуарів
+    // ------------------------------------------------------------------
+    const CATEGORIES = [
+      {
+        id: "glasses", icon: "👓", label: "Окуляри", anchorIndex: 168,
+        variants: [
+          { id: "none", label: "Немає" },
+          { id: "glasses1", thumb: `${THUMBS}/glasses/thumbnail.png`, url: `${ASSETS}/glasses/scene.gltf`,
+            scale: [0.01, 0.01, 0.01], position: [0, 0, 0] },
+          { id: "glasses2", thumb: `${THUMBS}/glasses2/thumbnail.png`, url: `${ASSETS}/glasses2/scene.gltf`,
+            scale: [0.01, 0.01, 0.01], position: [0, 0, 0] },
+        ],
+      },
+      {
+        id: "hats", icon: "🎩", label: "Капелюхи", anchorIndex: 10,
+        variants: [
+          { id: "none", label: "Немає" },
+          { id: "hat1", thumb: `${THUMBS}/hat/thumbnail.png`, url: `${ASSETS}/hat/scene.gltf`,
+            scale: [0.35, 0.35, 0.35], position: [0, 1.0, -0.5] },
+          { id: "hat2", thumb: `${THUMBS}/hat2/thumbnail.png`, url: `${ASSETS}/hat2/scene.gltf`,
+            scale: [0.35, 0.35, 0.35], position: [0, 1.0, -0.5] },
+        ],
+      },
+      {
+        id: "earrings", icon: "💎", label: "Сережки", anchorIndexLeft: 234, anchorIndexRight: 454,
+        variants: [
+          { id: "none", label: "Немає" },
+          { id: "earring1", thumb: `${THUMBS}/earring/thumbnail.png`, url: `${ASSETS}/earring/scene.gltf`,
+            scale: [0.01, 0.01, 0.01], position: [0, 0, 0] },
+        ],
+      },
+    ];
+
+    let mindarThree, renderer, scene, camera;
+    const anchors = {}; // anchorIndex -> anchor object (кеш, щоб не створювати дублікати)
+    const loadedModels = {}; // variantId -> { scenes: [Object3D, ...] }
+    const currentSelection = {}; // categoryId -> variantId
+
+    const getAnchor = (index) => {
+      if (!anchors[index]) anchors[index] = mindarThree.addAnchor(index);
+      return anchors[index];
+    };
+
+    // ------------------------------------------------------------------
+    // Завантаження оклюдера голови (для реалістичного "одягання" аксесуарів)
+    // ------------------------------------------------------------------
+    const setupOccluder = async () => {
+      const occluder = await loadGLTF(`${ASSETS}/sparkar/headOccluder.glb`);
+      occluder.scene.scale.set(0.065, 0.065, 0.065);
+      occluder.scene.position.set(0, -0.3, 0.15);
+      occluder.scene.renderOrder = 0;
+      const occluderMaterial = new THREE.MeshBasicMaterial({ colorWrite: false });
+      occluder.scene.traverse((o) => { if (o.isMesh) o.material = occluderMaterial; });
+      getAnchor(168).group.add(occluder.scene);
+    };
+
+    // ------------------------------------------------------------------
+    // Завантаження усіх моделей аксесуарів заздалегідь
+    // ------------------------------------------------------------------
+    const setupAccessories = async () => {
+      for (const cat of CATEGORIES) {
+        for (const variant of cat.variants) {
+          if (variant.id === "none") continue;
+
+          if (cat.id === "earrings") {
+            const left = await loadGLTF(variant.url);
+            const right = await loadGLTF(variant.url);
+            [ [left, cat.anchorIndexLeft, 1], [right, cat.anchorIndexRight, -1] ].forEach(([gltf, anchorIdx, mirror]) => {
+              gltf.scene.scale.set(variant.scale[0] * mirror, variant.scale[1], variant.scale[2]);
+              gltf.scene.position.set(variant.position[0], variant.position[1], variant.position[2]);
+              gltf.scene.renderOrder = 1;
+              gltf.scene.visible = false;
+              getAnchor(anchorIdx).group.add(gltf.scene);
+            });
+            loadedModels[variant.id] = { scenes: [left.scene, right.scene] };
+          } else {
+            const gltf = await loadGLTF(variant.url);
+            gltf.scene.scale.set(...variant.scale);
+            gltf.scene.position.set(...variant.position);
+            gltf.scene.renderOrder = 1;
+            gltf.scene.visible = false;
+            getAnchor(cat.anchorIndex).group.add(gltf.scene);
+            loadedModels[variant.id] = { scenes: [gltf.scene] };
+          }
+        }
+        currentSelection[cat.id] = "none";
+      }
+    };
+
+    const selectVariant = (catId, variantId) => {
+      const prev = currentSelection[catId];
+      if (prev && loadedModels[prev]) {
+        loadedModels[prev].scenes.forEach((s) => (s.visible = false));
+      }
+      currentSelection[catId] = variantId;
+      if (variantId !== "none" && loadedModels[variantId]) {
+        loadedModels[variantId].scenes.forEach((s) => (s.visible = true));
+      }
+    };
+
+    // ------------------------------------------------------------------
+    // Побудова інтерфейсу: панель категорій + панель варіантів
+    // ------------------------------------------------------------------
+    const buildUI = () => {
+      const categoryBar = document.getElementById("categoryBar");
+      const variantBar = document.getElementById("variantBar");
+
+      const renderVariants = (cat) => {
+        variantBar.innerHTML = "";
+        cat.variants.forEach((variant) => {
+          const div = document.createElement("div");
+          div.className = "variant-thumb";
+          if (currentSelection[cat.id] === variant.id) div.classList.add("selected");
+          if (variant.thumb) {
+            div.style.backgroundImage = `url(${variant.thumb})`;
+          } else {
+            div.textContent = "🚫";
+          }
+          div.title = variant.label || variant.id;
+          div.addEventListener("click", () => {
+            selectVariant(cat.id, variant.id);
+            renderVariants(cat); // оновити виділення
+          });
+          variantBar.appendChild(div);
+        });
+      };
+
+      CATEGORIES.forEach((cat, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "cat-btn";
+        btn.textContent = `${cat.icon} ${cat.label}`;
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".cat-btn").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+          renderVariants(cat);
+        });
+        categoryBar.appendChild(btn);
+        if (idx === 0) {
+          btn.classList.add("active");
+          renderVariants(cat);
+        }
+      });
+    };
+
+    // ------------------------------------------------------------------
+    // Захоплення кадру (відео + 3D-рендер в одне зображення)
+    // ------------------------------------------------------------------
+    const captureFrame = () => {
+      const video = mindarThree.video;
+      const renderCanvas = renderer.domElement;
+
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      canvas.width = renderCanvas.width;
+      canvas.height = renderCanvas.height;
+
+      const sx = ((video.clientWidth - renderCanvas.clientWidth) / 2) * video.videoWidth / video.clientWidth;
+      const sy = ((video.clientHeight - renderCanvas.clientHeight) / 2) * video.videoHeight / video.clientHeight;
+      const sw = video.videoWidth - sx * 2;
+      const sh = video.videoHeight - sy * 2;
+
+      context.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
+      renderer.preserveDrawingBuffer = true;
+      renderer.render(scene, camera);
+      context.drawImage(renderCanvas, 0, 0, canvas.width, canvas.height);
+      renderer.preserveDrawingBuffer = false;
+
+      // Підпис з датою
+      const text = `AR Примірочна · ${new Date().toLocaleDateString()}`;
+      context.font = `${Math.round(canvas.width * 0.028)}px Arial`;
+      context.fillStyle = "white";
+      context.strokeStyle = "black";
+      context.lineWidth = 3;
+      const tx = canvas.width * 0.03;
+      const ty = canvas.height * 0.95;
+      context.strokeText(text, tx, ty);
+      context.fillText(text, tx, ty);
+
+      return canvas;
+    };
+
+    const showPreview = (canvas) => {
+      const dataUrl = canvas.toDataURL("image/png");
+      document.getElementById("previewImg").src = dataUrl;
+      document.getElementById("previewModal").style.display = "flex";
+      document.getElementById("previewModal").dataset.canvasReady = "1";
+      window.__lastCaptureCanvas = canvas;
+    };
+
+    document.getElementById("captureBtn").addEventListener("click", () => {
+      const flash = document.getElementById("flash");
+      flash.style.opacity = "0.85";
+      setTimeout(() => (flash.style.opacity = "0"), 120);
+      const canvas = captureFrame();
+      showPreview(canvas);
+    });
+
+    document.getElementById("closePreviewBtn").addEventListener("click", () => {
+      document.getElementById("previewModal").style.display = "none";
+    });
+
+    document.getElementById("downloadBtn").addEventListener("click", () => {
+      const canvas = window.__lastCaptureCanvas;
+      const link = document.createElement("a");
+      link.download = "ar-tryon.png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    });
+
+    // ---- Web Share API (з фолбеком на завантаження) ----
+    document.getElementById("shareBtn").addEventListener("click", () => {
+      const canvas = window.__lastCaptureCanvas;
+      canvas.toBlob(async (blob) => {
+        const file = new File([blob], "ar-tryon.png", { type: "image/png" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: "AR Примірочна",
+              text: "Подивіться, як я приміряв(ла) аксесуари у доповненій реальності!",
+            });
+          } catch (e) {
+            console.log("Поширення скасовано або не вдалося:", e);
+          }
+        } else {
+          const link = document.createElement("a");
+          link.download = "ar-tryon.png";
+          link.href = canvas.toDataURL("image/png");
+          link.click();
+          alert("Web Share API не підтримується цим браузером — фото збережено на пристрій.");
+        }
+      });
+    });
+
+    // ---- Перемикання камери ----
+    document.getElementById("switchCamBtn").addEventListener("click", () => {
+      if (mindarThree && mindarThree.switchCamera) mindarThree.switchCamera();
+    });
+
+    // ---- Сховати/показати інтерфейс (для чистого фото) ----
+    let uiHidden = false;
+    document.getElementById("hideUiBtn").addEventListener("click", () => {
+      uiHidden = !uiHidden;
+      document.getElementById("variantBar").style.display = uiHidden ? "none" : "flex";
+      document.getElementById("categoryBar").style.display = uiHidden ? "none" : "flex";
+      document.getElementById("overlay").style.display = uiHidden ? "none" : "block";
+    });
+
+    // ------------------------------------------------------------------
+    const init = async () => {
+      mindarThree = new window.MINDAR.FACE.MindARThree({
+        container: document.querySelector("#ar-container"),
+        uiLoading: "no",
+        uiScanning: "no",
+        uiError: "no",
+      });
+      ({ renderer, scene, camera } = mindarThree);
+      renderer.setClearColor(0x000000, 0);
+
+      const light1 = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+      scene.add(light1);
+      const light2 = new THREE.DirectionalLight(0xffffff, 0.6);
+      light2.position.set(-0.5, 1, 1);
+      scene.add(light2);
+
+      await setupOccluder();
+      await setupAccessories();
+      buildUI();
+
+      await mindarThree.start();
+
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+      });
+    };
+
+    document.getElementById("startButtonInner").addEventListener("click", () => {
+      document.getElementById("startBtn").remove();
+      init();
+    });
+  </script>
+</body>
+</html>
